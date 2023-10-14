@@ -1,5 +1,9 @@
 """Seminar 3. Multilayer neural net"""
 import numpy as np
+import datetime
+import os.path
+
+from src.test_utils import get_preprocessed_data, visualize_weights, visualize_loss
 
 
 class Param:
@@ -54,7 +58,10 @@ class ReLULayer:
         :param X: input data
         :return: Rectified Linear Unit
         """
-        raise Exception("Not implemented!")
+        self.mask = X >= 0
+        Z = X.copy()
+        Z[~self.mask] = 0
+        return Z
 
     def backward(self, d_out: np.array) -> np.array:
         """
@@ -66,7 +73,7 @@ class ReLULayer:
           with respect to input
         """
         # TODO: Implement backward pass
-        raise Exception("Not implemented!")
+        return self.mask.astype(int)*d_out
 
     def params(self) -> dict:
         # ReLU Doesn't have any parameters
@@ -82,7 +89,9 @@ class DenseLayer:
     def forward(self, X):
         # TODO: Implement forward pass
         # Your implementation shouldn't have any loops
-        raise Exception("Not implemented!")
+        self.X = X
+        Z = self.B.value + self.X@self.W.value
+        return Z
 
     def backward(self, d_out):
         """
@@ -103,10 +112,14 @@ class DenseLayer:
 
         # It should be pretty similar to linear classifier from
         # the previous assignment
+
         # raise Exception("Not implemented!")
-        # print('d_out shape is ', d_out.shape)
-        # print('self.W shape is ', self.W.value.shape)
-        raise Exception("Not implemented!")
+        dL_dB = d_out.sum(axis=0,keepdims=True) #потому что у нас d_out - (batch_size, n) а для B надо (1, n)
+        dL_dW = self.X.T @ d_out
+        dL_dX = d_out @ self.W.value.T
+        self.W.grad = dL_dW
+        self.B.grad = dL_dB
+        return dL_dX
 
     def params(self):
         return {'W': self.W, 'B': self.B}
@@ -146,8 +159,9 @@ class TwoLayerNet:
         # Set layer parameters gradient to zeros
         # After that compute loss and gradients
         for layer in self.layers:
+            Z = layer.forward(Z)
             for param in layer.params().values():
-                pass
+                param.grad = np.zeros_like(param.value)
 
         self.loss, self.d_out = softmax_with_cross_entropy(Z, y)
         return Z
@@ -161,7 +175,9 @@ class TwoLayerNet:
         for layer in reversed(self.layers):
             tmp_d_out = layer.backward(tmp_d_out)
             for param in layer.params().values():
-                pass
+                reg_loss, reg_grad = l2_regularization(param.value, self.reg)
+                self.loss += reg_loss
+                param.grad += reg_grad
 
     def fit(self, X, y, learning_rate=1e-3, num_iters=10000,
             batch_size=4, verbose=True):
@@ -203,10 +219,53 @@ class TwoLayerNet:
 
         return loss_history
 
+    def evaluate(self, X, y):
+        z = self.forward(X,y)
+        y_predicted = np.argmax(z, axis=1)
+        accuracy = np.mean(y_predicted == y)
+        return accuracy
 
 if __name__ == '__main__':
     """1 point"""
     # Train your TwoLayer Net! 
     # Test accuracy must be > 0.33
     # Save report to output/seminar3
-    model = TwoLayerNet()
+    learning_rate = 1e-3
+    reg = 0.01
+    num_iters = 3000
+    batch_size = 64
+    # ******* END OF YOUR CODE ************
+
+    (x_train, y_train), (x_test, y_test) = get_preprocessed_data()
+    n_input = x_train.shape[-1]
+    n_output = 10
+    hidden = 512
+    model = TwoLayerNet(n_input=n_input, n_output=n_output, hidden_layer_size=hidden, reg=reg)
+    t0 = datetime.datetime.now()
+    loss_history = model.fit(x_train, y_train, learning_rate, num_iters, batch_size, verbose=True)
+    t1 = datetime.datetime.now()
+    dt = t1 - t0
+
+    report = f"""# Training Softmax classifier  
+    datetime: {t1.isoformat(' ', 'seconds')}  
+    Well done in: {dt.seconds} seconds  
+    learning_rate = {learning_rate}  
+    reg = {reg}  
+    num_iters = {num_iters}  
+    batch_size = {batch_size}  
+
+    Final loss: {loss_history[-1]}   
+    Train accuracy: {model.evaluate(x_train, y_train)}   
+    Test accuracy: {model.evaluate(x_test, y_test)}  
+
+    <br>
+    <img src="loss.png">
+    """
+
+    print(report)
+
+    out_dir = r'../output/seminar3'
+    report_path = os.path.join(out_dir, 'report.md')
+    with open(report_path, 'w') as f:
+        f.write(report)
+    visualize_loss(loss_history, out_dir)
