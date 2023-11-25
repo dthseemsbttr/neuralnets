@@ -15,7 +15,7 @@ PATH_TO_DATA = 'data/raw/cats_dogs_train'
 PATH_TO_MODEL = 'models/model_6'
 BUCKET_NAME = 'neuralnets2023'
 # todo fix your git user name and copy .env to project root
-YOUR_GIT_USER = 'labintsev'
+YOUR_GIT_USER = 'dthseemsbttr'
 
 
 def download_data():
@@ -35,14 +35,96 @@ def download_data():
 
 
 def make_model(input_shape, num_classes):
-    model = None
-    return model
+    inputs = tf.keras.Input(shape=input_shape)
+
+    # Entry block
+    x = tf.keras.layers.Rescaling(1.0 / 255)(inputs)
+    x = tf.keras.layers.Conv2D(128, 3, strides=2, padding="same")(x)
+    x = tf.keras.layers.BatchNormalization()(x)
+    x = tf.keras.layers.Activation("relu")(x)
+
+    previous_block_activation = x  # Set aside residual
+
+    for size in [256, 512, 728]:
+        x = tf.keras.layers.Activation("relu")(x)
+        x = tf.keras.layers.SeparableConv2D(size, 3, padding="same")(x)
+        x = tf.keras.layers.BatchNormalization()(x)
+
+        x = tf.keras.layers.Activation("relu")(x)
+        x = tf.keras.layers.SeparableConv2D(size, 3, padding="same")(x)
+        x = tf.keras.layers.BatchNormalization()(x)
+
+        x = tf.keras.layers.MaxPooling2D(3, strides=2, padding="same")(x)
+
+        # Project residual
+        residual = tf.keras.layers.Conv2D(size, 1, strides=2, padding="same")(
+            previous_block_activation
+        )
+        x = tf.keras.layers.add([x, residual])  # Add back residual
+        previous_block_activation = x  # Set aside next residual
+
+    x = tf.keras.layers.SeparableConv2D(1024, 3, padding="same")(x)
+    x = tf.keras.layers.BatchNormalization()(x)
+    x = tf.keras.layers.Activation("relu")(x)
+
+    x = tf.keras.layers.GlobalAveragePooling2D()(x)
+    if num_classes == 2:
+        activation = "sigmoid"
+        units = 1
+    else:
+        activation = "softmax"
+        units = num_classes
+
+    x = tf.keras.layers.Dropout(0.5)(x)
+    outputs = tf.keras.layers.Dense(units, activation=activation)(x)
+    return tf.keras.Model(inputs, outputs)
 
 
 def train():
     """Pipeline: Build, train and save model to models/model_6"""
     # Todo: Copy some code from seminar5 and https://keras.io/examples/vision/image_classification_from_scratch/
+    image_size = (180, 180)
+    batch_size = 64
+
+    train_ds, val_ds = tf.keras.utils.image_dataset_from_directory(
+        os.path.join(PATH_TO_DATA, "PetImages"),
+        validation_split=0.2,
+        subset="both",
+        seed=1337,
+        image_size=image_size,
+        batch_size=batch_size,
+    )
+    data_augmentation = tf.keras.Sequential(
+        [
+            tf.keras.layers.RandomFlip("horizontal"),
+            tf.keras.layers.RandomRotation(0.1),
+        ]
+    )
+    train_ds = train_ds.map(
+        lambda img, label: (data_augmentation(img), label),
+        num_parallel_calls=tf.data.AUTOTUNE,
+    )
+    train_ds = train_ds.prefetch(tf.data.AUTOTUNE)
+    val_ds = val_ds.prefetch(tf.data.AUTOTUNE)
+
+    model = make_model(input_shape=image_size + (3,), num_classes=2)
     print('Training model')
+    epochs = 25
+
+    callbacks = [
+        tf.keras.callbacks.ModelCheckpoint("save_at_{epoch}.keras"),
+    ]
+    model.compile(
+        optimizer=tf.keras.optimizers.Adam(1e-3),
+        loss="binary_crossentropy",
+        metrics=["accuracy"],
+    )
+    model.fit(
+        train_ds,
+        epochs=epochs,
+        callbacks=callbacks,
+        validation_data=val_ds,
+    )
 
 
 def upload():
