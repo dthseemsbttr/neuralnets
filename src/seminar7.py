@@ -22,7 +22,7 @@ PATH_TO_TEST_DATA = 'data/raw/spam_test.csv'
 PATH_TO_MODEL = 'models/model_7'
 BUCKET_NAME = 'neuralnets2023'
 # todo fix your git user name
-YOUR_GIT_USER = 'labintsev'
+YOUR_GIT_USER = 'dthseemsbttr'
 
 
 def download_data():
@@ -42,10 +42,12 @@ def make_model():
     :return:
     """
     inputs = tf.keras.layers.Input(name='inputs', shape=[MAX_SEQ_LEN])
-    x = tf.keras.layers.Embedding(MAX_WORDS, output_dim=4, input_length=MAX_SEQ_LEN)(inputs)
-    x = tf.keras.layers.SimpleRNN(units=4)(x)
-    x = tf.keras.layers.Dense(1, name='out_layer')(x)
-    x = tf.keras.layers.Activation('sigmoid')(x)
+    x = tf.keras.layers.Embedding(MAX_WORDS, output_dim=128, input_length=MAX_SEQ_LEN)(inputs)
+    x = tf.keras.layers.Bidirectional(tf.keras.layers.LSTM(64, activation='tanh', return_sequences=True))(x)
+    x = tf.keras.layers.Bidirectional(tf.keras.layers.LSTM(64))(x)
+    x = tf.keras.layers.Flatten()(x)
+    x = tf.keras.layers.Dense(32, activation='relu')(x)
+    x = tf.keras.layers.Dense(1, activation='sigmoid')(x)
     recurrent_model = tf.keras.Model(inputs=inputs, outputs=x)
     return recurrent_model
 
@@ -66,12 +68,12 @@ def train():
 
     model = make_model()
     model.summary()
-    model.compile(loss='binary_crossentropy', optimizer='rmsprop', metrics=['accuracy', tf.keras.metrics.Precision()])
+    model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy', tf.keras.metrics.Precision()])
     model.fit(sequences_matrix, Y_train, batch_size=128, epochs=10, validation_split=0.2)
-    model.save('models/model_7')
+    model.save(PATH_TO_MODEL)
 
 
-def validate(model_path='models/model_7') -> tuple:
+def validate(model_path=PATH_TO_MODEL) -> tuple:
     """
     Validate model on test subset
     todo fit tokenizer on train texts,
@@ -79,9 +81,9 @@ def validate(model_path='models/model_7') -> tuple:
     """
     model = tf.keras.models.load_model(model_path)
     X_test, Y_test = load_data('data/raw/spam_test.csv')
-
+    X_train, _ = load_data()
     tok = tf.keras.preprocessing.text.Tokenizer(num_words=MAX_WORDS)
-    tok.fit_on_texts(X_test)
+    tok.fit_on_texts(X_train)
     test_sequences = tok.texts_to_sequences(X_test)
     test_sequences_matrix = tf.keras.preprocessing.sequence.pad_sequences(test_sequences, maxlen=MAX_SEQ_LEN)
 
